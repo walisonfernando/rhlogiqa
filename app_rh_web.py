@@ -80,12 +80,12 @@ elif escolha == "Admissão":
     st.divider()
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1: st.subheader("📋 Funcionários Ativos")
-    res_at = conn.table("funcionarios").select("nome, cpf, data_adm, empresas(nome), funcoes(nome, departamentos(nome))").is_("data_dem", "null").execute()
+    res_at = conn.table("funcionarios").select("nome, cpf, data_adm, id_empresa, id_funcao, empresas!id_empresa(nome), funcoes!id_funcao(nome, departamentos!id_dept(nome))").is_("data_dem", "null").execute()
     if res_at.data:
         df_at = pd.DataFrame(res_at.data)
-        df_at['Empresa'] = df_at['empresas'].apply(lambda x: x['nome'] if x else "")
-        df_at['Função'] = df_at['funcoes'].apply(lambda x: x['nome'] if x else "")
-        df_at['Depto'] = df_at['funcoes'].apply(lambda x: x['departamentos']['nome'] if x and x['departamentos'] else "")
+        df_at['Empresa'] = df_at['empresas'].apply(lambda x: x['nome'] if isinstance(x, dict) else "")
+        df_at['Função'] = df_at['funcoes'].apply(lambda x: x['nome'] if isinstance(x, dict) else "")
+        df_at['Depto'] = df_at['funcoes'].apply(lambda x: x['departamentos']['nome'] if isinstance(x, dict) and x.get('departamentos') else "")
         df_at['Admissão'] = df_at['data_adm'].apply(formatar_data_br)
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
