@@ -28,7 +28,6 @@ escolha = st.sidebar.radio("Navegação", menu)
 if escolha == "📊 Dashboard":
     st.title("Painel de Controle Cloud")
     
-    # Busca ativos e desligados usando filtros de NULL corretos para o Supabase
     ativos_res = conn.table("funcionarios").select("*", count="exact").is_("data_dem", "null").execute()
     desligados_res = conn.table("funcionarios").select("*", count="exact").not_.is_("data_dem", "null").execute()
     
@@ -38,103 +37,104 @@ if escolha == "📊 Dashboard":
     
     st.divider()
     st.subheader("⚠️ Alertas de Vencimento (Próximos 30 dias)")
-    
-    # Busca documentos com a relação do nome do funcionário
     docs_res = conn.table("documentos").select("tipo, data_validade, funcionarios(nome, data_dem)").execute()
     
     if docs_res.data:
         df_v = pd.DataFrame(docs_res.data)
-        # Filtra apenas documentos de funcionários ativos (que não possuem data_dem)
         df_v = df_v[df_v['funcionarios'].apply(lambda x: x['data_dem'] is None if x else False)].copy()
-        
         if not df_v.empty:
             df_v['data_validade'] = pd.to_datetime(df_v['data_validade'], errors='coerce')
-            hoje = pd.Timestamp(date.today())
-            prazo = hoje + pd.Timedelta(days=30)
-            
-            alerta = df_v[(df_v['data_validade'] >= hoje) & (df_v['data_validade'] <= prazo)].copy()
-            
+            alerta = df_v[(df_v['data_validade'] >= pd.Timestamp(date.today())) & 
+                          (df_v['data_validade'] <= pd.Timestamp(date.today()) + pd.Timedelta(days=30))].copy()
             if not alerta.empty:
                 alerta['Funcionário'] = alerta['funcionarios'].apply(lambda x: x['nome'])
                 alerta['Vencimento'] = alerta['data_validade'].dt.strftime('%d/%m/%Y')
                 st.dataframe(alerta[['Funcionário', 'tipo', 'Vencimento']], use_container_width=True, hide_index=True)
-            else:
-                st.success("Tudo em dia para os próximos 30 dias!")
+            else: st.success("Tudo em dia!")
 
 elif escolha == "Admissão":
-    st.header("👤 Nova Admissão Web")
+    st.header("👤 Nova Admissão")
     
-    # Carregando dados para os seletores
     emps_data = conn.table("empresas").select("id, nome").execute().data
     depts_data = conn.table("departamentos").select("id, nome").execute().data
-    funs_data = conn.table("funcoes").select("id, nome, id_dept").execute().data
+    funs_data = conn.table("funcoes").select("id, nome").execute().data # Busca todas sem filtro
     
     if not emps_data or not depts_data or not funs_data:
         st.warning("⚠️ Cadastre Empresas, Departamentos e Funções primeiro.")
     else:
-        emps, depts, funs_all = pd.DataFrame(emps_data), pd.DataFrame(depts_data), pd.DataFrame(funs_data)
-        
         with st.form("f_adm", clear_on_submit=True):
             nome = st.text_input("Nome Completo")
             cpf = st.text_input("CPF")
             c1, c2 = st.columns(2)
+            # Input de data agora aceita digitação manual
             dt_n = c1.date_input("Nascimento", format="DD/MM/YYYY")
             dt_a = c2.date_input("Admissão", format="DD/MM/YYYY")
             
-            emp_id = st.selectbox("Empresa", options=emps['id'].tolist(), format_func=lambda x: emps[emps['id']==x]['nome'].values[0])
-            dept_id = st.selectbox("Departamento", options=depts['id'].tolist(), format_func=lambda x: depts[depts['id']==x]['nome'].values[0])
+            emp_id = st.selectbox("Empresa", options=[e['id'] for e in emps_data], format_func=lambda x: next(e['nome'] for e in emps_data if e['id']==x))
+            fun_id = st.selectbox("Função (Seleção Livre)", options=[f['id'] for f in funs_data], format_func=lambda x: next(f['nome'] for f in funs_data if f['id']==x))
             
-            funs_filt = funs_all[funs_all['id_dept'] == dept_id]
-            if not funs_filt.empty:
-                fun_id = st.selectbox("Função", options=funs_filt['id'].tolist(), format_func=lambda x: funs_filt[funs_filt['id']==x]['nome'].values[0])
-            else:
-                st.error("Selecione um departamento com funções cadastradas.")
-                fun_id = None
-            
-            if st.form_submit_button("Admitir"):
-                if nome and cpf and fun_id:
+            if st.form_submit_button("Finalizar Admissão"):
+                if nome and cpf:
                     conn.table("funcionarios").insert({
                         "nome": nome, "cpf": cpf, "data_nasc": str(dt_n), 
                         "data_adm": str(dt_a), "id_funcao": fun_id, "id_empresa": emp_id
                     }).execute()
-                    st.success(f"✅ {nome} admitido com sucesso!")
+                    st.success(f"✅ {nome} admitido!")
                     st.rerun()
+
+    st.divider()
+    st.subheader("📋 Funcionários Ativos")
+    res_at = conn.table("funcionarios").select("nome, cpf, data_adm, empresas(nome), funcoes(nome)").is_("data_dem", "null").execute()
+    if res_at.data:
+        df_at = pd.DataFrame(res_at.data)
+        df_at['Empresa'] = df_at['empresas'].apply(lambda x: x['nome'] if x else "")
+        df_at['Função'] = df_at['funcoes'].apply(lambda x: x['nome'] if x else "")
+        df_at['Admissão'] = df_at['data_adm'].apply(formatar_data_br)
+        st.dataframe(df_at[['nome', 'cpf', 'Admissão', 'Empresa', 'Função']], use_container_width=True, hide_index=True)
 
 elif escolha == "Desligamentos":
     st.header("🚪 Desligamento")
-    # Busca apenas ativos
-    ativos_res = conn.table("funcionarios").select("id, nome, cpf").is_("data_dem", "null").execute()
-    ativos = pd.DataFrame(ativos_res.data)
+    ativos = pd.DataFrame(conn.table("funcionarios").select("id, nome, cpf").is_("data_dem", "null").execute().data)
     
-    if ativos.empty:
-        st.info("Nenhum funcionário ativo para desligar.")
+    if ativos.empty: st.info("Sem funcionários ativos.")
     else:
         with st.form("f_des"):
             f_id = st.selectbox("Funcionário", options=ativos['id'].tolist(), format_func=lambda x: ativos[ativos['id']==x]['nome'].values[0])
-            dt_d = st.date_input("Data de Demissão")
+            dt_d = st.date_input("Data de Demissão", format="DD/MM/YYYY")
             motivo = st.text_input("Motivo")
-            if st.form_submit_button("Confirmar Desligamento"):
-                if motivo:
-                    conn.table("funcionarios").update({"data_dem": str(dt_d), "motivo": motivo}).eq("id", f_id).execute()
-                    st.warning("⚠️ Desligamento registrado.")
-                    st.rerun()
-                else:
-                    st.error("Informe o motivo.")
+            if st.form_submit_button("Confirmar"):
+                conn.table("funcionarios").update({"data_dem": str(dt_d), "motivo": motivo}).eq("id", f_id).execute()
+                st.rerun()
+
+    st.divider()
+    st.subheader("📜 Histórico de Desligados")
+    res_des = conn.table("funcionarios").select("nome, cpf, data_adm, data_dem, motivo").not_.is_("data_dem", "null").execute()
+    if res_des.data:
+        df_des = pd.DataFrame(res_des.data)
+        df_des['Admissão'] = df_des['data_adm'].apply(formatar_data_br)
+        df_des['Demissão'] = df_des['data_dem'].apply(formatar_data_br)
+        st.dataframe(df_des[['nome', 'cpf', 'Admissão', 'Demissão', 'motivo']], use_container_width=True, hide_index=True)
 
 elif escolha == "Cursos e Documentos":
     st.header("📜 Documentos")
     func_res = conn.table("funcionarios").select("id, nome").is_("data_dem", "null").execute()
-    funcs = pd.DataFrame(func_res.data)
-    
-    if not funcs.empty:
+    if func_res.data:
+        funcs = pd.DataFrame(func_res.data)
         with st.form("f_doc", clear_on_submit=True):
             f_id = st.selectbox("Funcionário", options=funcs['id'].tolist(), format_func=lambda x: funcs[funcs['id']==x]['nome'].values[0])
             tipo = st.selectbox("Tipo", ["CNH", "MOPP", "ASO", "Outros"])
-            dt_v = st.date_input("Validade")
-            if st.form_submit_button("Salvar Documento"):
+            dt_v = st.date_input("Validade", format="DD/MM/YYYY")
+            if st.form_submit_button("Salvar"):
                 conn.table("documentos").insert({"id_func": f_id, "tipo": tipo, "data_validade": str(dt_v)}).execute()
-                st.success("✅ Documento salvo.")
                 st.rerun()
+    
+    st.divider()
+    res_doc = conn.table("documentos").select("tipo, data_validade, funcionarios(nome)").execute()
+    if res_doc.data:
+        df_doc = pd.DataFrame(res_doc.data)
+        df_doc['Funcionário'] = df_doc['funcionarios'].apply(lambda x: x['nome'] if x else "")
+        df_doc['Validade'] = df_doc['data_validade'].apply(formatar_data_br)
+        st.dataframe(df_doc[['Funcionário', 'tipo', 'Validade']], use_container_width=True, hide_index=True)
 
 elif escolha == "Empresas":
     st.header("🏢 Empresas")
@@ -160,11 +160,10 @@ elif escolha == "Funções":
     st.header("🛠️ Funções")
     depts_data = conn.table("departamentos").select("*").execute().data
     if depts_data:
-        depts = pd.DataFrame(depts_data)
         with st.form("f_fun", clear_on_submit=True):
             n = st.text_input("Nome da Função")
-            d_id = st.selectbox("Depto", options=depts['id'].tolist(), format_func=lambda x: depts[depts['id']==x]['nome'].values[0])
-            if st.form_submit_button("Salvar"):
+            d_id = st.selectbox("Vincular ao Depto", options=[d['id'] for d in depts_data], format_func=lambda x: next(d['nome'] for d in depts_data if d['id']==x))
+            if st.form_submit_button("Salvar Função"):
                 conn.table("funcoes").insert({"nome": n, "id_dept": d_id}).execute()
                 st.rerun()
     res = conn.table("funcoes").select("nome, departamentos(nome)").execute()
