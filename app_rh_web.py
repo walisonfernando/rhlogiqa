@@ -67,8 +67,8 @@ elif escolha == "Admissão":
             cpf = st.text_input("CPF")
             c1, c2 = st.columns(2)
             # Input de data agora aceita digitação manual
-            dt_n = c1.date_input("Nascimento", format="DD/MM/YYYY")
-            dt_a = c2.date_input("Admissão", format="DD/MM/YYYY")
+            dt_n = c1.date_input("Nascimento", format="DD/MM/YYYY", min_value=date(1900, 1, 1), max_value=date.today())
+            dt_a = c2.date_input("Admissão", format="DD/MM/YYYY", min_value=date(1980, 1, 1))
             
             emp_id = st.selectbox("Empresa", options=[e['id'] for e in emps_data], format_func=lambda x: next(e['nome'] for e in emps_data if e['id']==x))
             fun_id = st.selectbox("Função (Seleção Livre)", options=[f['id'] for f in funs_data], format_func=lambda x: next(f['nome'] for f in funs_data if f['id']==x))
@@ -123,7 +123,7 @@ elif escolha == "Cursos e Documentos":
         with st.form("f_doc", clear_on_submit=True):
             f_id = st.selectbox("Funcionário", options=funcs['id'].tolist(), format_func=lambda x: funcs[funcs['id']==x]['nome'].values[0])
             tipo = st.selectbox("Tipo", ["CNH", "MOPP", "ASO", "Outros"])
-            dt_v = st.date_input("Validade", format="DD/MM/YYYY")
+            dt_v = st.date_input("Validade", format="DD/MM/YYYY", max_value=date(2100, 1, 1))
             if st.form_submit_button("Salvar"):
                 conn.table("documentos").insert({"id_func": f_id, "tipo": tipo, "data_validade": str(dt_v)}).execute()
                 st.rerun()
