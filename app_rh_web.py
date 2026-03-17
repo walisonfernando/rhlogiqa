@@ -32,7 +32,7 @@ if escolha == "📊 Dashboard":
     ativos_res = conn.table("funcionarios").select("*", count="exact").is_("data_dem", "null").execute()
     
     # Busca desligados (onde data_dem NÃO é nulo)
-    desligados_res = conn.table("funcionarios").select("*", count="exact").not_.is_("data_dem", "null").execute()
+    query_des = conn.table("funcionarios").select("*, empresas(nome), funcoes(nome, departamentos(nome))").not_.is_("data_dem", "null").execute()
     
     c1, c2 = st.columns(2)
     c1.metric("Funcionários Ativos", ativos_res.count if ativos_res.count else 0)
