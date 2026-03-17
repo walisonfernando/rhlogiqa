@@ -28,27 +28,15 @@ escolha = st.sidebar.radio("Navegação", menu)
 if escolha == "📊 Dashboard":
     st.title("Painel de Controle Cloud")
     
-    # Busca dados para métricas
-    ativos_res = conn.table("funcionarios").select("*", count="exact").filter("data_dem", "is", "null").execute()
-    desligados_res = conn.table("funcionarios").select("*", count="exact").filter("data_dem", "neq", "").execute() # Simplificado
+    # Busca ativos (onde data_dem é nulo)
+    ativos_res = conn.table("funcionarios").select("*", count="exact").is_("data_dem", "null").execute()
+    
+    # Busca desligados (onde data_dem NÃO é nulo)
+    desligados_res = conn.table("funcionarios").select("*", count="exact").not_.is_("data_dem", "null").execute()
     
     c1, c2 = st.columns(2)
     c1.metric("Funcionários Ativos", ativos_res.count if ativos_res.count else 0)
-    
-    st.divider()
-    st.subheader("⚠️ Alertas de Vencimento (Próximos 30 dias)")
-    # Busca documentos de funcionários que não foram demitidos
-    docs_res = conn.table("documentos").select("tipo, data_validade, funcionarios(nome)").filter("data_validade", "neq", "N/A").execute()
-    
-    if docs_res.data:
-        df_v = pd.DataFrame(docs_res.data)
-        df_v['data_validade'] = pd.to_datetime(df_v['data_validade'], errors='coerce')
-        alerta = df_v[df_v['data_validade'] <= pd.Timestamp(date.today()) + pd.Timedelta(days=30)].copy()
-        if not alerta.empty:
-            alerta['Funcionário'] = alerta['funcionarios'].apply(lambda x: x['nome'] if x else "N/A")
-            alerta['Validade'] = alerta['data_validade'].dt.strftime('%d/%m/%Y')
-            st.dataframe(alerta[['Funcionário', 'tipo', 'Validade']], use_container_width=True, hide_index=True)
-        else: st.success("Nenhum vencimento próximo.")
+    c2.metric("Total Desligados", desligados_res.count if desligados_res.count else 0)
 
 elif escolha == "Admissão":
     st.header("👤 Nova Admissão Web")
