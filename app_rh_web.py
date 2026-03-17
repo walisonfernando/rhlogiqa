@@ -65,14 +65,21 @@ elif escolha == "Admissão":
             dt_a = c2.date_input("Admissão", format="DD/MM/YYYY", min_value=date(1980, 1, 1))
             
             emp_id = st.selectbox("Empresa", options=[e['id'] for e in emps_data], format_func=lambda x: next(e['nome'] for e in emps_data if e['id']==x))
+            # Departamento agora é uma seleção independente
             dept_id = st.selectbox("Departamento", options=[d['id'] for d in depts_data], format_func=lambda x: next(d['nome'] for d in depts_data if d['id']==x))
             fun_id = st.selectbox("Função", options=[f['id'] for f in funs_data], format_func=lambda x: next(f['nome'] for f in funs_data if f['id']==x))
             
             if st.form_submit_button("Finalizar Admissão"):
                 if nome and cpf:
+                    # SALVANDO: Incluindo o id_departamento na tabela de funcionários
                     conn.table("funcionarios").insert({
-                        "nome": nome, "cpf": cpf, "data_nasc": str(dt_n), 
-                        "data_adm": str(dt_a), "id_funcao": fun_id, "id_empresa": emp_id
+                        "nome": nome, 
+                        "cpf": cpf, 
+                        "data_nasc": str(dt_n), 
+                        "data_adm": str(dt_a), 
+                        "id_funcao": fun_id, 
+                        "id_empresa": emp_id,
+                        "id_departamento": dept_id
                     }).execute()
                     st.success(f"✅ {nome} admitido!")
                     st.rerun()
@@ -80,17 +87,27 @@ elif escolha == "Admissão":
     st.divider()
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1: st.subheader("📋 Funcionários Ativos")
-    res_at = conn.table("funcionarios").select("nome, cpf, data_adm, id_empresa, id_funcao, empresas!id_empresa(nome), funcoes!id_funcao(nome, departamentos!id_dept(nome))").is_("data_dem", "null").execute()
+    
+    # CONSULTA: Agora buscamos as 3 relações de forma independente
+    res_at = conn.table("funcionarios").select(
+        "nome, cpf, data_adm, empresas(nome), funcoes(nome), departamentos(nome)"
+    ).is_("data_dem", "null").execute()
+    
     if res_at.data:
         df_at = pd.DataFrame(res_at.data)
+        # Extração segura dos nomes (tratando como dicionários vindos do Supabase)
         df_at['Empresa'] = df_at['empresas'].apply(lambda x: x['nome'] if isinstance(x, dict) else "")
         df_at['Função'] = df_at['funcoes'].apply(lambda x: x['nome'] if isinstance(x, dict) else "")
-        df_at['Depto'] = df_at['funcoes'].apply(lambda x: x['departamentos']['nome'] if isinstance(x, dict) and x.get('departamentos') else "")
+        df_at['Depto'] = df_at['departamentos'].apply(lambda x: x['nome'] if isinstance(x, dict) else "")
         df_at['Admissão'] = df_at['data_adm'].apply(formatar_data_br)
+        
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_at[['nome', 'cpf', 'Admissão', 'Empresa', 'Depto', 'Função']].to_excel(writer, index=False, sheet_name='Ativos')
-        with col_t2: st.download_button(label="📥 Baixar Excel", data=output.getvalue(), file_name=f"ativos_{date.today()}.xlsx", mime="application/vnd.ms-excel")
+        
+        with col_t2: 
+            st.download_button(label="📥 Baixar Excel", data=output.getvalue(), file_name=f"ativos_{date.today()}.xlsx", mime="application/vnd.ms-excel")
+        
         st.dataframe(df_at[['nome', 'cpf', 'Admissão', 'Empresa', 'Depto', 'Função']], use_container_width=True, hide_index=True)
 
 elif escolha == "Desligamentos":
