@@ -55,9 +55,10 @@ if escolha == "📊 Dashboard":
 elif escolha == "Admissão":
     st.header("👤 Nova Admissão")
     
+    # Busca dados dos seletores
     emps_data = conn.table("empresas").select("id, nome").execute().data
     depts_data = conn.table("departamentos").select("id, nome").execute().data
-    funs_data = conn.table("funcoes").select("id, nome").execute().data # Busca todas sem filtro
+    funs_data = conn.table("funcoes").select("id, nome").execute().data 
     
     if not emps_data or not depts_data or not funs_data:
         st.warning("⚠️ Cadastre Empresas, Departamentos e Funções primeiro.")
@@ -66,7 +67,7 @@ elif escolha == "Admissão":
             nome = st.text_input("Nome Completo")
             cpf = st.text_input("CPF")
             c1, c2 = st.columns(2)
-            # Input de data agora aceita digitação manual
+            # Agora com limites para aceitar qualquer idade
             dt_n = c1.date_input("Nascimento", format="DD/MM/YYYY", min_value=date(1900, 1, 1), max_value=date.today())
             dt_a = c2.date_input("Admissão", format="DD/MM/YYYY", min_value=date(1980, 1, 1))
             
@@ -83,13 +84,31 @@ elif escolha == "Admissão":
                     st.rerun()
 
     st.divider()
-    st.subheader("📋 Funcionários Ativos")
+    col_t1, col_t2 = st.columns([3, 1])
+    with col_t1:
+        st.subheader("📋 Funcionários Ativos")
+    
     res_at = conn.table("funcionarios").select("nome, cpf, data_adm, empresas(nome), funcoes(nome)").is_("data_dem", "null").execute()
+    
     if res_at.data:
         df_at = pd.DataFrame(res_at.data)
         df_at['Empresa'] = df_at['empresas'].apply(lambda x: x['nome'] if x else "")
         df_at['Função'] = df_at['funcoes'].apply(lambda x: x['nome'] if x else "")
         df_at['Admissão'] = df_at['data_adm'].apply(formatar_data_br)
+        
+        # --- BOTÃO EXPORTAR EXCEL ---
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_at[['nome', 'cpf', 'Admissão', 'Empresa', 'Função']].to_excel(writer, index=False, sheet_name='Ativos')
+        
+        with col_t2:
+            st.download_button(
+                label="📥 Baixar Excel",
+                data=output.getvalue(),
+                file_name=f"ativos_rh_{date.today()}.xlsx",
+                mime="application/vnd.ms-excel"
+            )
+        
         st.dataframe(df_at[['nome', 'cpf', 'Admissão', 'Empresa', 'Função']], use_container_width=True, hide_index=True)
 
 elif escolha == "Desligamentos":
